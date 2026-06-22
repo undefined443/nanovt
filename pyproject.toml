@@ -1,0 +1,36 @@
+[project]
+name = "video-transcriber"
+version = "0.1.0"
+description = "CLI tool to extract audio from video files and transcribe it with OpenAI speech-to-text."
+readme = "README.md"
+requires-python = ">=3.13"
+keywords = [
+    "audio-transcription",
+    "ffmpeg",
+    "openai",
+    "speech-to-text",
+    "video-transcription",
+]
+dependencies = [
+    "openai",
+]
+
+[dependency-groups]
+dev = [
+    "pyright",
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
