@@ -5,9 +5,9 @@ import sys
 
 
 def test_python_module_help() -> None:
-    """Show help through python -m video_transcriber."""
+    """Show help through python -m nanovt."""
     result = subprocess.run(
-        [sys.executable, "-m", "video_transcriber", "--help"],
+        [sys.executable, "-m", "nanovt", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -15,4 +15,4 @@ def test_python_module_help() -> None:
 
     assert result.returncode == 0
     assert "usage:" in result.stdout
-    assert "vt input.mp4" in result.stdout
+    assert "nanovt input.mp4" in result.stdout

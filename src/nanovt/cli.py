@@ -75,7 +75,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         description=(
             "Extract audio from a media file, chunk it, and transcribe it with OpenAI."
         ),
-        epilog="Run with: vt input.mp4",
+        epilog="Run with: nanovt input.mp4",
     )
     parser.add_argument("input", type=Path, help="Input video or audio file.")
     parser.add_argument(
@@ -160,9 +160,7 @@ def _build_openai_client(api_key: str) -> _OpenAIClient:
     try:
         from openai import OpenAI
     except ImportError as exc:
-        raise SystemExit(
-            "OpenAI SDK is not installed. Reinstall video-transcriber."
-        ) from exc
+        raise SystemExit("OpenAI SDK is not installed. Reinstall nanovt.") from exc
 
     return cast(_OpenAIClient, OpenAI(api_key=api_key))
 

@@ -1,6 +1,6 @@
 """Video and audio transcription command-line package."""
 
-from video_transcriber.cli import main
+from nanovt.cli import main
 
 __version__ = "0.1.0"
 

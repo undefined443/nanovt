@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "video-transcriber"
+name = "nanovt"
 version = "0.1.0"
 description = "CLI tool to extract audio from video files and transcribe it with OpenAI speech-to-text."
 readme = "README.md"
@@ -34,8 +34,7 @@ classifiers = [
 ]
 
 [project.scripts]
-video-transcriber = "video_transcriber.cli:main"
-vt = "video_transcriber.cli:main"
+nanovt = "nanovt.cli:main"
 
 [dependency-groups]
 dev = [
@@ -47,7 +46,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/video_transcriber"]
+packages = ["src/nanovt"]
 
 [tool.ruff]
 line-length = 88

@@ -1,1 +1,1 @@
-"""Tests for video_transcriber."""
+"""Tests for nanovt."""
