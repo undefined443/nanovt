@@ -1,6 +1,6 @@
 """Transcribe a video or audio file with OpenAI's speech-to-text API.
 
-The script extracts a normalized WAV audio stream with ffmpeg, splits it into
+The command extracts a normalized WAV audio stream with ffmpeg, splits it into
 short chunks, transcribes each chunk, and concatenates the transcript text.
 """
 
@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import BinaryIO, Literal, NotRequired, Protocol, TypedDict, cast, overload
 
@@ -27,7 +28,7 @@ class _TranscriptionCreateArgs(TypedDict):
 
 
 class _TranscriptionsClient(Protocol):
-    """Protocol for the OpenAI audio transcriptions API used by this script."""
+    """Protocol for the OpenAI audio transcriptions API used by this command."""
 
     @overload
     def create(
@@ -61,8 +62,11 @@ class _OpenAIClient(Protocol):
     audio: _AudioClient
 
 
-def _parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments.
+
+    Args:
+        argv: Optional argument sequence. Defaults to process arguments.
 
     Returns:
         Parsed command-line arguments.
@@ -71,7 +75,7 @@ def _parse_args() -> argparse.Namespace:
         description=(
             "Extract audio from a media file, chunk it, and transcribe it with OpenAI."
         ),
-        epilog="Run with: uv run python transcribe_video.py input.mp4",
+        epilog="Run with: vt input.mp4",
     )
     parser.add_argument("input", type=Path, help="Input video or audio file.")
     parser.add_argument(
@@ -106,57 +110,23 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Keep extracted audio and chunk files after completion.",
     )
-    parser.add_argument(
-        "--api-key",
-        help="OpenAI API key. Defaults to OPENAI_API_KEY or ~/.zshenv.",
-    )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def _load_api_key(explicit_key: str | None) -> str:
+def _load_api_key() -> str:
     """Load the OpenAI API key.
 
-    Args:
-        explicit_key: API key passed through the command line.
-
     Returns:
-        The resolved API key.
+        The OpenAI API key from the environment.
 
     Raises:
-        SystemExit: If no API key is available.
+        SystemExit: If OPENAI_API_KEY is not set.
     """
-    if explicit_key:
-        return explicit_key
-
     env_key = os.environ.get("OPENAI_API_KEY")
     if env_key:
         return env_key
 
-    zshenv = Path.home() / ".zshenv"
-    if zshenv.exists():
-        for line in zshenv.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("export OPENAI_API_KEY="):
-                return _clean_shell_value(stripped.split("=", 1)[1])
-            if stripped.startswith("OPENAI_API_KEY="):
-                return _clean_shell_value(stripped.split("=", 1)[1])
-
-    raise SystemExit("OPENAI_API_KEY is not set. Export it or pass --api-key.")
-
-
-def _clean_shell_value(value: str) -> str:
-    """Strip simple shell quoting from a variable value.
-
-    Args:
-        value: Raw value read from a shell environment file.
-
-    Returns:
-        The unquoted value when simple matching quotes are present.
-    """
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
+    raise SystemExit("OPENAI_API_KEY is not set.")
 
 
 def _run_ffmpeg(args: list[str]) -> None:
@@ -191,7 +161,7 @@ def _build_openai_client(api_key: str) -> _OpenAIClient:
         from openai import OpenAI
     except ImportError as exc:
         raise SystemExit(
-            "OpenAI SDK is not installed. Run with: uv run transcribe_video.py ..."
+            "OpenAI SDK is not installed. Reinstall video-transcriber."
         ) from exc
 
     return cast(_OpenAIClient, OpenAI(api_key=api_key))
@@ -349,9 +319,13 @@ def _write_transcript(output_path: Path, transcripts: list[str]) -> None:
     print(f"Wrote transcript -> {output_path}")
 
 
-def main() -> None:
-    """Run the video-to-transcript command-line workflow."""
-    args = _parse_args()
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run the video-to-transcript command-line workflow.
+
+    Args:
+        argv: Optional argument sequence. Defaults to process arguments.
+    """
+    args = parse_args(argv)
     input_path = args.input.expanduser().resolve()
     if not input_path.exists():
         raise SystemExit(f"Input file does not exist: {input_path}")
@@ -360,7 +334,7 @@ def main() -> None:
     if args.chunk_seconds <= 0:
         raise SystemExit("--chunk-seconds must be positive.")
 
-    api_key = _load_api_key(args.api_key)
+    api_key = _load_api_key()
     client = _build_openai_client(api_key)
     output_path = args.output or input_path.with_suffix(".txt")
     output_path = output_path.expanduser().resolve()
