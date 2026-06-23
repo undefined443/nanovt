@@ -66,16 +66,23 @@ Before the first release, confirm:
 
 - The PyPI distribution name `video-transcriber` is available.
 - The repository, homepage, and issue tracker URLs.
+- PyPI Trusted Publishing is configured for this repository, workflow
+  `publish.yml`, and environment `pypi`.
 
-Build and check the distribution locally:
+Bump the version in `pyproject.toml`, then build and check locally:
 
 ```bash
 uv build
 uvx twine check dist/*
 ```
 
-Upload to PyPI after configuring a PyPI API token:
+Commit the version bump, tag the release, and push the tag:
 
 ```bash
-uvx twine upload dist/*
+git tag v0.1.0
+git push origin v0.1.0
 ```
+
+The `Publish` GitHub Actions workflow builds, verifies, and publishes the
+release to PyPI through Trusted Publishing. Approve the `pypi` environment if
+reviewers are configured.
