@@ -1,9 +1,17 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
 [project]
 name = "video-transcriber"
 version = "0.1.0"
 description = "CLI tool to extract audio from video files and transcribe it with OpenAI speech-to-text."
 readme = "README.md"
 requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    { name = "Xiao Li", email = "xiaoli3397@gmail.com" },
+]
 keywords = [
     "audio-transcription",
     "ffmpeg",
@@ -12,18 +20,41 @@ keywords = [
     "video-transcription",
 ]
 dependencies = [
-    "openai",
+    "openai>=1.40",
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.scripts]
+video-transcriber = "video_transcriber.cli:main"
+vt = "video_transcriber.cli:main"
 
 [dependency-groups]
 dev = [
+    "build",
     "pyright",
+    "pytest",
     "ruff",
+    "twine",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/video_transcriber"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py313"
+
+[tool.uv]
+package = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "D"]
