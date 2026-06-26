@@ -53,6 +53,7 @@ class _TranscriptionsClient(Protocol):
         model: str,
         language: str,
         response_format: Literal["diarized_json"],
+        chunking_strategy: Literal["auto"],
     ) -> _DiarizedTranscription: ...
 
     @overload
@@ -62,6 +63,7 @@ class _TranscriptionsClient(Protocol):
         file: BinaryIO,
         model: str,
         response_format: Literal["diarized_json"],
+        chunking_strategy: Literal["auto"],
     ) -> _DiarizedTranscription: ...
 
 
@@ -182,12 +184,14 @@ def _create_diarized_transcription(
             model=model,
             language=language,
             response_format="diarized_json",
+            chunking_strategy="auto",
         )
 
     return client.audio.transcriptions.create(
         file=audio_file,
         model=model,
         response_format="diarized_json",
+        chunking_strategy="auto",
     )
 
 

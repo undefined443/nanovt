@@ -41,9 +41,11 @@ class _Transcriptions:
         model: str,
         response_format: Literal["json", "diarized_json"],
         language: str | None = None,
+        chunking_strategy: Literal["auto"] | None = None,
     ) -> _TextResponse | _DiarizedResponse:
         self.model = model
         self.response_format = response_format
+        self.chunking_strategy = chunking_strategy
         if response_format == "json":
             return _TextResponse()
         return self.response
@@ -107,6 +109,7 @@ def test_transcribe_chunk_formats_diarized_dialogue(tmp_path: Path) -> None:
     assert text == "A: Hello.\nB: Hi there."
     assert transcriptions.model == DEFAULT_DIARIZATION_MODEL
     assert transcriptions.response_format == "diarized_json"
+    assert transcriptions.chunking_strategy == "auto"
 
 
 def test_transcribe_chunk_uses_json_for_default_model(tmp_path: Path) -> None:
@@ -129,6 +132,7 @@ def test_transcribe_chunk_uses_json_for_default_model(tmp_path: Path) -> None:
     assert text == "plain text"
     assert transcriptions.model == DEFAULT_TRANSCRIPTION_MODEL
     assert transcriptions.response_format == "json"
+    assert transcriptions.chunking_strategy is None
 
 
 def test_package_exports_version_and_main() -> None:
