@@ -1,6 +1,6 @@
 """Tests for OpenAI retry classification."""
 
-from nanovt.cli import _should_retry_openai_error
+from nanovt.transcription import _should_retry_openai_error
 
 
 class _StatusError(Exception):

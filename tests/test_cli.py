@@ -8,10 +8,9 @@ from nanovt import main
 from nanovt.cli import (
     DEFAULT_DIARIZATION_MODEL,
     DEFAULT_TRANSCRIPTION_MODEL,
-    _OpenAIClient,
-    _transcribe_chunk,
     parse_args,
 )
+from nanovt.transcription import _OpenAIClient, _transcribe_chunk
 
 
 class _Segment:
