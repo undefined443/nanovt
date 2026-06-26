@@ -50,6 +50,15 @@ nanovt input.mp4 --output transcript.txt
 nanovt input.mp4 --keep-temp
 ```
 
+For two-speaker dialogue transcription, enable speaker labels:
+
+```bash
+nanovt input.mp4 --diarize
+```
+
+This uses `gpt-4o-transcribe-diarize` by default and writes dialogue lines such
+as `A: ...` and `B: ...`.
+
 ## Development
 
 ```bash

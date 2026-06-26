@@ -15,16 +15,24 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import BinaryIO, Literal, NotRequired, Protocol, TypedDict, cast, overload
+from typing import BinaryIO, Literal, Protocol, cast, overload
+
+DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-transcribe"
+DEFAULT_DIARIZATION_MODEL = "gpt-4o-transcribe-diarize"
+_SPEAKER_LABELS = ("A", "B")
 
 
-class _TranscriptionCreateArgs(TypedDict):
-    """Keyword arguments for creating an OpenAI transcription."""
+class _DiarizedSegment(Protocol):
+    speaker: str
+    text: str
 
-    file: BinaryIO
-    model: str
-    response_format: Literal["text"]
-    language: NotRequired[str]
+
+class _TextTranscription(Protocol):
+    text: str
+
+
+class _DiarizedTranscription(Protocol):
+    segments: Sequence[_DiarizedSegment]
 
 
 class _TranscriptionsClient(Protocol):
@@ -37,8 +45,8 @@ class _TranscriptionsClient(Protocol):
         file: BinaryIO,
         model: str,
         language: str,
-        response_format: Literal["text"],
-    ) -> str: ...
+        response_format: Literal["json"],
+    ) -> _TextTranscription: ...
 
     @overload
     def create(
@@ -46,8 +54,27 @@ class _TranscriptionsClient(Protocol):
         *,
         file: BinaryIO,
         model: str,
-        response_format: Literal["text"],
-    ) -> str: ...
+        response_format: Literal["json"],
+    ) -> _TextTranscription: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        file: BinaryIO,
+        model: str,
+        language: str,
+        response_format: Literal["diarized_json"],
+    ) -> _DiarizedTranscription: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        file: BinaryIO,
+        model: str,
+        response_format: Literal["diarized_json"],
+    ) -> _DiarizedTranscription: ...
 
 
 class _AudioClient(Protocol):
@@ -84,8 +111,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Output transcript path. Defaults to <input_stem>.txt.",
     )
+    parser.add_argument("--model", help="OpenAI transcription model.")
     parser.add_argument(
-        "--model", default="gpt-4o-transcribe", help="OpenAI transcription model."
+        "--diarize",
+        action="store_true",
+        help=(
+            "Use the diarization transcription model and write speaker-labeled "
+            "dialogue lines."
+        ),
     )
     parser.add_argument(
         "--language",
@@ -110,7 +143,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Keep extracted audio and chunk files after completion.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.model is None:
+        args.model = (
+            DEFAULT_DIARIZATION_MODEL if args.diarize else DEFAULT_TRANSCRIPTION_MODEL
+        )
+    return args
 
 
 def _load_api_key() -> str:
@@ -219,6 +257,8 @@ def _transcribe_chunk(
     model: str,
     language: str | None,
     retries: int,
+    diarize: bool,
+    speaker_labels: dict[str, str],
 ) -> str:
     """Transcribe one audio chunk with retry for transient failures.
 
@@ -228,6 +268,8 @@ def _transcribe_chunk(
         model: Transcription model name.
         language: Optional input language code.
         retries: Number of retries after the first attempt.
+        diarize: Whether to request speaker diarization.
+        speaker_labels: Stable speaker label mapping across chunks.
 
     Returns:
         Transcribed text.
@@ -238,16 +280,16 @@ def _transcribe_chunk(
     for attempt in range(1, retries + 2):
         try:
             with chunk_path.open("rb") as audio_file:
-                transcription_args: _TranscriptionCreateArgs = {
-                    "file": audio_file,
-                    "model": model,
-                    "response_format": "text",
-                }
-                if language:
-                    transcription_args["language"] = language
+                if diarize:
+                    transcript = _create_diarized_transcription(
+                        audio_file, client, model, language
+                    )
+                    return _format_diarized_transcript(transcript, speaker_labels)
 
-                transcript = client.audio.transcriptions.create(**transcription_args)
-            return str(transcript).strip()
+                transcript = _create_text_transcription(
+                    audio_file, client, model, language
+                )
+                return transcript.strip()
         except Exception as exc:
             if not _should_retry_openai_error(exc) or attempt > retries:
                 raise RuntimeError(str(exc)) from exc
@@ -257,6 +299,68 @@ def _transcribe_chunk(
             time.sleep(wait_seconds)
 
     raise RuntimeError("Transcription failed after retries.")
+
+
+def _create_text_transcription(
+    audio_file: BinaryIO,
+    client: _OpenAIClient,
+    model: str,
+    language: str | None,
+) -> str:
+    if language:
+        transcript = client.audio.transcriptions.create(
+            file=audio_file,
+            model=model,
+            language=language,
+            response_format="json",
+        )
+        return transcript.text
+
+    transcript = client.audio.transcriptions.create(
+        file=audio_file,
+        model=model,
+        response_format="json",
+    )
+    return transcript.text
+
+
+def _create_diarized_transcription(
+    audio_file: BinaryIO,
+    client: _OpenAIClient,
+    model: str,
+    language: str | None,
+) -> _DiarizedTranscription:
+    if language:
+        return client.audio.transcriptions.create(
+            file=audio_file,
+            model=model,
+            language=language,
+            response_format="diarized_json",
+        )
+
+    return client.audio.transcriptions.create(
+        file=audio_file,
+        model=model,
+        response_format="diarized_json",
+    )
+
+
+def _format_diarized_transcript(
+    transcript: _DiarizedTranscription,
+    speaker_labels: dict[str, str],
+) -> str:
+    lines: list[str] = []
+    for segment in transcript.segments:
+        speaker = segment.speaker
+        if speaker not in speaker_labels:
+            if len(speaker_labels) == len(_SPEAKER_LABELS):
+                raise RuntimeError("Diarization returned more than two speakers.")
+            speaker_labels[speaker] = _SPEAKER_LABELS[len(speaker_labels)]
+
+        text = segment.text.strip()
+        if text:
+            lines.append(f"{speaker_labels[speaker]}: {text}")
+    return "\n".join(lines)
 
 
 def _should_retry_openai_error(exc: Exception) -> bool:
@@ -282,6 +386,7 @@ def _transcribe_chunks(
     model: str,
     language: str | None,
     retries: int,
+    diarize: bool,
 ) -> list[str]:
     """Transcribe chunks sequentially.
 
@@ -291,14 +396,18 @@ def _transcribe_chunks(
         model: Transcription model name.
         language: Optional input language code.
         retries: Number of retries per chunk.
+        diarize: Whether to request speaker diarization.
 
     Returns:
         Transcript text for each chunk.
     """
     transcripts: list[str] = []
+    speaker_labels: dict[str, str] = {}
     for index, chunk in enumerate(chunks, start=1):
         print(f"Transcribing {index}/{len(chunks)}: {chunk.name}")
-        text = _transcribe_chunk(chunk, client, model, language, retries)
+        text = _transcribe_chunk(
+            chunk, client, model, language, retries, diarize, speaker_labels
+        )
         if not text:
             print(f"  Warning: empty transcript for {chunk.name}")
         transcripts.append(text)
@@ -346,7 +455,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _extract_audio(input_path, audio_path)
         chunks = _split_audio(audio_path, args.chunk_seconds, chunk_dir)
         transcripts = _transcribe_chunks(
-            chunks, client, args.model, args.language, args.retries
+            chunks, client, args.model, args.language, args.retries, args.diarize
         )
         _write_transcript(output_path, transcripts)
     except Exception as exc:
