@@ -66,30 +66,3 @@ uv sync --group dev
 uv run pytest
 uv run nanovt input.mp4
 ```
-
-## Releasing
-
-Before the first release, confirm:
-
-- The PyPI distribution name `nanovt` is available.
-- The repository, homepage, and issue tracker URLs.
-- PyPI Trusted Publishing is configured for this repository, workflow
-  `publish.yml`, and environment `pypi`.
-
-Bump the version in `pyproject.toml`, then build and check locally:
-
-```bash
-uv build
-uvx twine check dist/*
-```
-
-Commit the version bump, tag the release, and push the tag:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The `Publish` GitHub Actions workflow builds, verifies, and publishes the
-release to PyPI through Trusted Publishing. Approve the `pypi` environment if
-reviewers are configured.
