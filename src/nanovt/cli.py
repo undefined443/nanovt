@@ -7,6 +7,7 @@ short chunks, transcribes each chunk, and concatenates the transcript text.
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import os
 import shutil
 import sys
@@ -74,6 +75,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--keep-temp",
         action="store_true",
         help="Keep extracted audio and chunk files after completion.",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"nanovt {importlib.metadata.version('nanovt')}",
     )
     args = parser.parse_args(argv)
     if args.model is None:
