@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import BinaryIO, Literal, Protocol, cast, overload
 
-_SPEAKER_LABELS = ("A", "B")
+_SPEAKER_LABELS = tuple(chr(code) for code in range(ord("A"), ord("Z") + 1))
 
 
 class _DiarizedSegment(Protocol):
@@ -203,9 +203,12 @@ def _format_diarized_transcript(
     for segment in transcript.segments:
         speaker = segment.speaker
         if speaker not in speaker_labels:
-            if len(speaker_labels) == len(_SPEAKER_LABELS):
-                raise RuntimeError("Diarization returned more than two speakers.")
-            speaker_labels[speaker] = _SPEAKER_LABELS[len(speaker_labels)]
+            label_index = len(speaker_labels)
+            speaker_labels[speaker] = (
+                _SPEAKER_LABELS[label_index]
+                if label_index < len(_SPEAKER_LABELS)
+                else speaker
+            )
 
         text = segment.text.strip()
         if text:

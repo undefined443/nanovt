@@ -87,7 +87,7 @@ def test_parse_args_keeps_explicit_model_with_diarization() -> None:
 
 
 def test_transcribe_chunk_formats_diarized_dialogue(tmp_path: Path) -> None:
-    """Format diarized segments as two-speaker dialogue lines."""
+    """Format diarized segments as speaker-labeled dialogue lines."""
     chunk_path = tmp_path / "chunk.wav"
     chunk_path.write_bytes(b"audio")
     response = _DiarizedResponse(
@@ -110,6 +110,33 @@ def test_transcribe_chunk_formats_diarized_dialogue(tmp_path: Path) -> None:
     assert transcriptions.model == DEFAULT_DIARIZATION_MODEL
     assert transcriptions.response_format == "diarized_json"
     assert transcriptions.chunking_strategy == "auto"
+
+
+def test_transcribe_chunk_formats_more_than_two_speakers(tmp_path: Path) -> None:
+    """Keep transcribing when diarization returns extra speakers."""
+    chunk_path = tmp_path / "chunk.wav"
+    chunk_path.write_bytes(b"audio")
+    response = _DiarizedResponse(
+        [
+            _Segment("speaker_0", "Hello."),
+            _Segment("speaker_1", "Hi."),
+            _Segment("speaker_2", "Question."),
+        ]
+    )
+    transcriptions = _Transcriptions(response)
+    client = cast(_OpenAIClient, _Client(transcriptions))
+
+    text = _transcribe_chunk(
+        chunk_path,
+        client,
+        DEFAULT_DIARIZATION_MODEL,
+        None,
+        0,
+        True,
+        {},
+    )
+
+    assert text == "A: Hello.\nB: Hi.\nC: Question."
 
 
 def test_transcribe_chunk_uses_json_for_default_model(tmp_path: Path) -> None:
