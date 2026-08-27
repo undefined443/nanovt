@@ -22,7 +22,7 @@ def _run_ffmpeg(args: list[str]) -> None:
         raise SystemExit(message)
 
 
-def _extract_audio(input_path: Path, audio_path: Path) -> None:
+def _extract_audio_wav(input_path: Path, audio_path: Path) -> None:
     """Extract normalized WAV audio from a media file.
 
     Args:
@@ -32,6 +32,35 @@ def _extract_audio(input_path: Path, audio_path: Path) -> None:
     print(f"Extracting audio -> {audio_path}")
     _run_ffmpeg(
         ["-i", str(input_path), "-vn", "-ac", "1", "-ar", "16000", str(audio_path)]
+    )
+
+
+def _extract_audio_mp3(input_path: Path, audio_path: Path) -> None:
+    """Extract mono 16 kHz MP3 audio from a media file.
+
+    A compressed stream keeps the base64 request body small enough to submit
+    inline to speech-to-text APIs that do not accept large uploads.
+
+    Args:
+        input_path: Source video or audio file.
+        audio_path: Destination MP3 file path.
+    """
+    print(f"Extracting audio -> {audio_path}")
+    _run_ffmpeg(
+        [
+            "-i",
+            str(input_path),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "32k",
+            str(audio_path),
+        ]
     )
 
 

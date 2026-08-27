@@ -1,16 +1,15 @@
 # nanovt
 
-Transcribe video or audio files with OpenAI speech-to-text.
+Transcribe video or audio files with OpenAI or Volcengine speech-to-text.
 
-The script extracts audio with `ffmpeg`, converts it to mono 16 kHz WAV,
-splits it into short chunks, transcribes each chunk with OpenAI, and writes a
-single text file.
+The script extracts audio with `ffmpeg`, converts it to mono 16 kHz, transcribes it, and writes a single text file. The OpenAI provider splits the audio into short chunks; the Volcengine provider submits the whole file to an asynchronous job.
 
 ## Requirements
 
 - Python 3.13+
 - `ffmpeg`
-- `OPENAI_API_KEY` in your environment
+- `OPENAI_API_KEY` in your environment (OpenAI provider, the default)
+- `VOLC_ASR_API_KEY` in your environment (Volcengine provider)
 
 ## Installation
 
@@ -58,6 +57,16 @@ nanovt input.mp4 --diarize
 
 This uses `gpt-4o-transcribe-diarize` by default and writes dialogue lines such
 as `A: ...`, `B: ...`, and `C: ...`.
+
+**Volcengine provider**
+
+Volcengine's big-model ASR handles Chinese and code-switched speech well. Set `VOLC_ASR_API_KEY` and select the provider:
+
+```bash
+nanovt input.mp4 --provider volc --language zh --diarize
+```
+
+The audio is compressed to a mono 16 kHz MP3 and submitted inline, so no public URL is needed. `--model` defaults to `bigmodel`; override the resource id with `VOLC_ASR_RESOURCE_ID` (default `volc.seedasr.auc`). `--chunk-seconds` is unused for this provider. Diarized output uses the same `A: ...` / `B: ...` lines.
 
 ## Development
 

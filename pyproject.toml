@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nanovt"
 version = "0.2.2"
-description = "CLI tool to extract audio from video files and transcribe it with OpenAI speech-to-text."
+description = "CLI tool to extract audio from video files and transcribe it with OpenAI or Volcengine speech-to-text."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -14,10 +14,12 @@ authors = [
 ]
 keywords = [
     "audio-transcription",
+    "diarization",
     "ffmpeg",
     "openai",
     "speech-to-text",
     "video-transcription",
+    "volcengine",
 ]
 dependencies = [
     "openai>=1.40",
@@ -68,3 +70,6 @@ convention = "google"
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

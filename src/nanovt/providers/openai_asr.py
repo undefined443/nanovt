@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import BinaryIO, Literal, Protocol, cast, overload
 
-_SPEAKER_LABELS = tuple(chr(code) for code in range(ord("A"), ord("Z") + 1))
+from nanovt.providers.speakers import _label_for
 
 
 class _DiarizedSegment(Protocol):
@@ -201,18 +201,9 @@ def _format_diarized_transcript(
 ) -> str:
     lines: list[str] = []
     for segment in transcript.segments:
-        speaker = segment.speaker
-        if speaker not in speaker_labels:
-            label_index = len(speaker_labels)
-            speaker_labels[speaker] = (
-                _SPEAKER_LABELS[label_index]
-                if label_index < len(_SPEAKER_LABELS)
-                else speaker
-            )
-
         text = segment.text.strip()
         if text:
-            lines.append(f"{speaker_labels[speaker]}: {text}")
+            lines.append(f"{_label_for(segment.speaker, speaker_labels)}: {text}")
     return "\n".join(lines)
 
 

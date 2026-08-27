@@ -2,10 +2,14 @@
 
 from pathlib import Path
 
+import pytest
+
 from nanovt import cli
 
 
-def test_main_runs_transcription_workflow(tmp_path: Path, monkeypatch) -> None:
+def test_main_runs_transcription_workflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Run the main workflow with audio and API work replaced by fakes."""
     input_path = tmp_path / "input.mp4"
     input_path.write_bytes(b"video")
@@ -42,9 +46,9 @@ def test_main_runs_transcription_workflow(tmp_path: Path, monkeypatch) -> None:
         return ["hello", "world"]
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/ffmpeg")
-    monkeypatch.setattr(cli, "_build_openai_client", lambda api_key: "client")
-    monkeypatch.setattr(cli, "_extract_audio", fake_extract_audio)
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(cli, "_build_openai_client", lambda _api_key: "client")
+    monkeypatch.setattr(cli, "_extract_audio_wav", fake_extract_audio)
     monkeypatch.setattr(cli, "_split_audio", fake_split_audio)
     monkeypatch.setattr(cli, "_transcribe_chunks", fake_transcribe_chunks)
 
@@ -59,5 +63,51 @@ def test_main_runs_transcription_workflow(tmp_path: Path, monkeypatch) -> None:
         (
             "transcribe",
             (["chunk_0000.wav", "chunk_0001.wav"], cli.DEFAULT_TRANSCRIPTION_MODEL, 3),
+        ),
+    ]
+
+
+def test_main_runs_volc_workflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run the Volcengine path: compressed MP3 in, whole-file transcript out."""
+    input_path = tmp_path / "input.mp4"
+    input_path.write_bytes(b"video")
+    calls: list[tuple[str, object]] = []
+
+    def fake_extract_audio_mp3(source_path: Path, audio_path: Path) -> None:
+        calls.append(("extract", (source_path, audio_path.name)))
+        audio_path.write_bytes(b"audio")
+
+    def fake_transcribe_volc(
+        audio_path: Path,
+        api_key: str,
+        resource_id: str,
+        model: str,
+        language: str | None,
+        diarize: bool,
+        retries: int,
+    ) -> str:
+        calls.append(("transcribe", (audio_path.name, resource_id, model, language)))
+        assert api_key == "test-key"
+        assert diarize
+        assert retries == 3
+        return "A: 你好\nB: 在的"
+
+    monkeypatch.setenv("VOLC_ASR_API_KEY", "test-key")
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(cli, "_extract_audio_mp3", fake_extract_audio_mp3)
+    monkeypatch.setattr(cli, "_transcribe_volc", fake_transcribe_volc)
+
+    cli.main([str(input_path), "--provider", "volc", "--language", "zh", "--diarize"])
+
+    assert input_path.with_suffix(".txt").read_text(encoding="utf-8") == (
+        "A: 你好\nB: 在的\n"
+    )
+    assert calls == [
+        ("extract", (input_path.resolve(), "source.mp3")),
+        (
+            "transcribe",
+            ("source.mp3", cli.DEFAULT_VOLC_RESOURCE_ID, cli.DEFAULT_VOLC_MODEL, "zh"),
         ),
     ]

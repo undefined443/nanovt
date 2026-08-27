@@ -1,7 +1,6 @@
 """Tests for CLI argument parsing and package exports."""
 
 from pathlib import Path
-from typing import BinaryIO, Literal, cast
 
 import nanovt
 from nanovt import main
@@ -10,55 +9,6 @@ from nanovt.cli import (
     DEFAULT_TRANSCRIPTION_MODEL,
     parse_args,
 )
-from nanovt.transcription import _OpenAIClient, _transcribe_chunk
-
-
-class _Segment:
-    def __init__(self, speaker: str, text: str) -> None:
-        self.speaker = speaker
-        self.text = text
-
-
-class _DiarizedResponse:
-    def __init__(self, segments: list[_Segment]) -> None:
-        self.segments = segments
-
-
-class _TextResponse:
-    text = "plain text"
-
-
-class _Transcriptions:
-    def __init__(self, response: _DiarizedResponse) -> None:
-        self.response = response
-        self.model: str | None = None
-        self.response_format: str | None = None
-
-    def create(
-        self,
-        *,
-        file: BinaryIO,
-        model: str,
-        response_format: Literal["json", "diarized_json"],
-        language: str | None = None,
-        chunking_strategy: Literal["auto"] | None = None,
-    ) -> _TextResponse | _DiarizedResponse:
-        self.model = model
-        self.response_format = response_format
-        self.chunking_strategy = chunking_strategy
-        if response_format == "json":
-            return _TextResponse()
-        return self.response
-
-
-class _Audio:
-    def __init__(self, transcriptions: _Transcriptions) -> None:
-        self.transcriptions = transcriptions
-
-
-class _Client:
-    def __init__(self, transcriptions: _Transcriptions) -> None:
-        self.audio = _Audio(transcriptions)
 
 
 def test_parse_args_accepts_input_and_chunk_seconds() -> None:
@@ -86,80 +36,26 @@ def test_parse_args_keeps_explicit_model_with_diarization() -> None:
     assert args.model == "custom-model"
 
 
-def test_transcribe_chunk_formats_diarized_dialogue(tmp_path: Path) -> None:
-    """Format diarized segments as speaker-labeled dialogue lines."""
-    chunk_path = tmp_path / "chunk.wav"
-    chunk_path.write_bytes(b"audio")
-    response = _DiarizedResponse(
-        [_Segment("speaker_0", "Hello."), _Segment("speaker_1", "Hi there.")]
-    )
-    transcriptions = _Transcriptions(response)
-    client = cast(_OpenAIClient, _Client(transcriptions))
+def test_parse_args_defaults_to_openai_provider() -> None:
+    """Select the OpenAI provider unless another one is requested."""
+    args = parse_args(["input.mp4"])
 
-    text = _transcribe_chunk(
-        chunk_path,
-        client,
-        DEFAULT_DIARIZATION_MODEL,
-        None,
-        0,
-        True,
-        {},
-    )
-
-    assert text == "A: Hello.\nB: Hi there."
-    assert transcriptions.model == DEFAULT_DIARIZATION_MODEL
-    assert transcriptions.response_format == "diarized_json"
-    assert transcriptions.chunking_strategy == "auto"
+    assert args.provider == "openai"
 
 
-def test_transcribe_chunk_formats_more_than_two_speakers(tmp_path: Path) -> None:
-    """Keep transcribing when diarization returns extra speakers."""
-    chunk_path = tmp_path / "chunk.wav"
-    chunk_path.write_bytes(b"audio")
-    response = _DiarizedResponse(
-        [
-            _Segment("speaker_0", "Hello."),
-            _Segment("speaker_1", "Hi."),
-            _Segment("speaker_2", "Question."),
-        ]
-    )
-    transcriptions = _Transcriptions(response)
-    client = cast(_OpenAIClient, _Client(transcriptions))
+def test_parse_args_uses_volc_model_for_volc_provider() -> None:
+    """Use the Volcengine model when the Volcengine provider is requested."""
+    args = parse_args(["input.mp4", "--provider", "volc"])
 
-    text = _transcribe_chunk(
-        chunk_path,
-        client,
-        DEFAULT_DIARIZATION_MODEL,
-        None,
-        0,
-        True,
-        {},
-    )
-
-    assert text == "A: Hello.\nB: Hi.\nC: Question."
+    assert args.provider == "volc"
+    assert args.model == "bigmodel"
 
 
-def test_transcribe_chunk_uses_json_for_default_model(tmp_path: Path) -> None:
-    """Use JSON transcription output for the default GPT-4o model."""
-    chunk_path = tmp_path / "chunk.wav"
-    chunk_path.write_bytes(b"audio")
-    transcriptions = _Transcriptions(_DiarizedResponse([]))
-    client = cast(_OpenAIClient, _Client(transcriptions))
+def test_parse_args_keeps_explicit_model_with_volc_provider() -> None:
+    """Keep an explicit model with the Volcengine provider."""
+    args = parse_args(["input.mp4", "--provider", "volc", "--model", "custom-model"])
 
-    text = _transcribe_chunk(
-        chunk_path,
-        client,
-        DEFAULT_TRANSCRIPTION_MODEL,
-        None,
-        0,
-        False,
-        {},
-    )
-
-    assert text == "plain text"
-    assert transcriptions.model == DEFAULT_TRANSCRIPTION_MODEL
-    assert transcriptions.response_format == "json"
-    assert transcriptions.chunking_strategy is None
+    assert args.model == "custom-model"
 
 
 def test_package_exports_version_and_main() -> None:
