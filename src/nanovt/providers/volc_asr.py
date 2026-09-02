@@ -1,8 +1,8 @@
 """Transcribe audio with Volcengine (Doubao/SeedASR) big-model speech-to-text.
 
-Volcengine exposes an asynchronous whole-file API: submit a job, then poll for
-the result. Unlike the OpenAI path, the audio is not split into chunks; the
-compressed stream is sent inline as base64.
+Volcengine exposes a synchronous whole-file API: one request returns the full
+transcript. The audio is not split into chunks; the compressed stream is sent
+inline as base64.
 """
 
 from __future__ import annotations
@@ -17,11 +17,8 @@ from pathlib import Path
 
 from nanovt.providers.speakers import _label_for
 
-_SUBMIT_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit"
-_QUERY_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query"
+_RECOGNIZE_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash"
 _STATUS_SUCCESS = "20000000"
-_STATUS_PROCESSING = {"20000001", "20000002"}
-_POLL_SECONDS = 15
 
 
 def _post_json(url: str, headers: dict[str, str], body: dict) -> tuple[str, dict]:
@@ -37,7 +34,7 @@ def _post_json(url: str, headers: dict[str, str], body: dict) -> tuple[str, dict
     """
     data = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(request, timeout=120) as response:
+    with urllib.request.urlopen(request, timeout=600) as response:
         payload = response.read().decode("utf-8") or "{}"
         return response.headers.get("X-Api-Status-Code", ""), json.loads(payload)
 
@@ -53,17 +50,27 @@ def _headers(api_key: str, resource_id: str, request_id: str) -> dict[str, str]:
     }
 
 
-def _submit(
+def _recognize(
     headers: dict[str, str],
     audio_b64: str,
     model: str,
     language: str | None,
     diarize: bool,
-) -> None:
-    """Submit a transcription job.
+) -> dict:
+    """Run one synchronous recognition request.
+
+    Args:
+        headers: Request headers.
+        audio_b64: Base64-encoded compressed audio.
+        model: Model name, such as ``bigmodel``.
+        language: Optional input language code.
+        diarize: Whether to request speaker diarization.
+
+    Returns:
+        The ``result`` object from the response body.
 
     Raises:
-        RuntimeError: If the submit request is rejected.
+        RuntimeError: If the request is rejected.
     """
     request_body = {
         "model_name": model,
@@ -77,7 +84,7 @@ def _submit(
         request_body["language"] = language
 
     status, payload = _post_json(
-        _SUBMIT_URL,
+        _RECOGNIZE_URL,
         headers,
         {
             "user": {"uid": "nanovt"},
@@ -86,26 +93,8 @@ def _submit(
         },
     )
     if status != _STATUS_SUCCESS:
-        raise RuntimeError(f"Volcengine submit failed: {status} {payload}")
-
-
-def _poll(headers: dict[str, str]) -> dict:
-    """Poll for the transcription result until the job reaches a terminal state.
-
-    Returns:
-        The ``result`` object from the response body.
-
-    Raises:
-        RuntimeError: If the job ends in a non-success state.
-    """
-    while True:
-        status, payload = _post_json(_QUERY_URL, headers, {})
-        if status == _STATUS_SUCCESS:
-            return payload.get("result", {})
-        if status in _STATUS_PROCESSING:
-            time.sleep(_POLL_SECONDS)
-            continue
-        raise RuntimeError(f"Volcengine query failed: {status} {payload}")
+        raise RuntimeError(f"Volcengine recognize failed: {status} {payload}")
+    return payload.get("result", {})
 
 
 def _format_diarized(result: dict) -> str:
@@ -147,7 +136,7 @@ def _transcribe_volc(
         model: Model name, such as ``bigmodel``.
         language: Optional input language code.
         diarize: Whether to request speaker diarization.
-        retries: Number of retries after a failed submit request.
+        retries: Number of retries after a failed request.
 
     Returns:
         The transcript text, speaker-labeled when diarization is requested.
@@ -155,11 +144,13 @@ def _transcribe_volc(
     audio_b64 = base64.b64encode(audio_path.read_bytes()).decode("ascii")
     headers = _headers(api_key, resource_id, str(uuid.uuid4()))
 
-    print(f"Submitting audio to Volcengine ({model})")
+    print(f"Transcribing audio with Volcengine ({model})")
     for attempt in range(1, retries + 2):
         try:
-            _submit(headers, audio_b64, model, language, diarize)
-            break
+            result = _recognize(headers, audio_b64, model, language, diarize)
+            if diarize:
+                return _format_diarized(result)
+            return result.get("text", "").strip()
         except urllib.error.URLError as exc:
             if attempt > retries:
                 raise RuntimeError(str(exc)) from exc
@@ -167,8 +158,4 @@ def _transcribe_volc(
             print(f"  {exc}; retrying in {wait_seconds}s")
             time.sleep(wait_seconds)
 
-    print("Waiting for the transcription result")
-    result = _poll(headers)
-    if diarize:
-        return _format_diarized(result)
-    return result.get("text", "").strip()
+    raise RuntimeError("Transcription failed after retries.")

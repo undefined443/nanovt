@@ -1,8 +1,10 @@
 """Transcribe a video or audio file with a speech-to-text API.
 
 The OpenAI provider extracts a normalized WAV stream with ffmpeg, splits it into
-short chunks, and transcribes each chunk. The Volcengine provider compresses the
-stream to MP3 and submits it whole to an asynchronous job.
+short chunks, and transcribes each chunk. The qwen3-asr-flash provider reuses the
+same chunking path against the DashScope OpenAI-compatible chat endpoint. The
+Volcengine provider compresses the stream to MP3 and sends it whole in one
+synchronous request.
 """
 
 from __future__ import annotations
@@ -18,10 +20,13 @@ from pathlib import Path
 
 from nanovt.audio import _extract_audio_mp3, _extract_audio_wav, _split_audio
 from nanovt.providers.openai_asr import _build_openai_client, _transcribe_chunks
+from nanovt.providers.qwen_asr import _build_qwen_client
+from nanovt.providers.qwen_asr import _transcribe_chunks as _transcribe_qwen_chunks
 from nanovt.providers.volc_asr import _transcribe_volc
 
 DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-transcribe"
 DEFAULT_DIARIZATION_MODEL = "gpt-4o-transcribe-diarize"
+DEFAULT_QWEN_MODEL = "qwen3-asr-flash"
 DEFAULT_VOLC_MODEL = "bigmodel"
 DEFAULT_VOLC_RESOURCE_ID = "volc.seedasr.auc"
 
@@ -37,8 +42,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         description=(
-            "Extract audio from a media file and transcribe it with OpenAI or "
-            "Volcengine."
+            "Extract audio from a media file and transcribe it with OpenAI, "
+            "qwen3-asr-flash, or Volcengine."
         ),
         epilog="Run with: nanovt input.mp4",
     )
@@ -51,7 +56,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["openai", "volc"],
+        choices=["openai", "qwen", "volc"],
         default="openai",
         help="Speech-to-text provider. Default: openai.",
     )
@@ -97,6 +102,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     if args.model is None:
         if args.provider == "volc":
             args.model = DEFAULT_VOLC_MODEL
+        elif args.provider == "qwen":
+            args.model = DEFAULT_QWEN_MODEL
         else:
             args.model = (
                 DEFAULT_DIARIZATION_MODEL
@@ -118,7 +125,10 @@ def _load_api_key(provider: str) -> str:
     Raises:
         SystemExit: If the provider's API key environment variable is not set.
     """
-    env_name = "VOLC_ASR_API_KEY" if provider == "volc" else "OPENAI_API_KEY"
+    env_name = {
+        "qwen": "DASHSCOPE_API_KEY",
+        "volc": "VOLC_ASR_API_KEY",
+    }.get(provider, "OPENAI_API_KEY")
     env_key = os.environ.get(env_name)
     if env_key:
         return env_key
@@ -163,6 +173,34 @@ def _run_openai(
     client = _build_openai_client(api_key)
     return _transcribe_chunks(
         chunks, client, args.model, args.language, args.retries, args.diarize
+    )
+
+
+def _run_qwen(
+    input_path: Path,
+    temp_dir: Path,
+    args: argparse.Namespace,
+    api_key: str,
+) -> list[str]:
+    """Extract WAV audio, split it into chunks, and transcribe with qwen3-asr-flash.
+
+    Args:
+        input_path: Source media file.
+        temp_dir: Working directory for extracted audio and chunks.
+        args: Parsed command-line arguments.
+        api_key: DashScope API key.
+
+    Returns:
+        Chunk transcript texts.
+    """
+    audio_path = temp_dir / "source.wav"
+    chunk_dir = temp_dir / "chunks"
+    chunk_dir.mkdir()
+    _extract_audio_wav(input_path, audio_path)
+    chunks = _split_audio(audio_path, args.chunk_seconds, chunk_dir)
+    client = _build_qwen_client(api_key)
+    return _transcribe_qwen_chunks(
+        chunks, client, args.model, args.language, args.retries
     )
 
 
@@ -212,13 +250,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit("ffmpeg is not installed or not on PATH.")
     if args.chunk_seconds <= 0:
         raise SystemExit("--chunk-seconds must be positive.")
+    if args.diarize and args.provider == "qwen":
+        raise SystemExit("qwen3-asr-flash does not support diarization.")
 
     api_key = _load_api_key(args.provider)
     output_path = args.output or input_path.with_suffix(".txt")
     output_path = output_path.expanduser().resolve()
 
     temp_dir = Path(tempfile.mkdtemp(prefix=f"transcribe_{input_path.stem}_"))
-    runner = _run_volc if args.provider == "volc" else _run_openai
+    runner = {"qwen": _run_qwen, "volc": _run_volc}.get(args.provider, _run_openai)
 
     try:
         transcripts = runner(input_path, temp_dir, args, api_key)

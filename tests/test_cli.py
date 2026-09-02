@@ -43,6 +43,14 @@ def test_parse_args_defaults_to_openai_provider() -> None:
     assert args.provider == "openai"
 
 
+def test_parse_args_uses_qwen_model_for_qwen_provider() -> None:
+    """Use qwen3-asr-flash when the qwen provider is requested."""
+    args = parse_args(["input.mp4", "--provider", "qwen"])
+
+    assert args.provider == "qwen"
+    assert args.model == "qwen3-asr-flash"
+
+
 def test_parse_args_uses_volc_model_for_volc_provider() -> None:
     """Use the Volcengine model when the Volcengine provider is requested."""
     args = parse_args(["input.mp4", "--provider", "volc"])
